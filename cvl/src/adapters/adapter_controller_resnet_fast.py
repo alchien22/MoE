@@ -11,6 +11,8 @@ import math
 from sparsemax import Sparsemax
 from .adapter_utils import Router, Baseline
 from torch.distributions.relaxed_bernoulli import RelaxedBernoulli
+from ..SIMPLE.simple import *
+
 
 class Adapter(nn.Module):
     """Conventional Adapter layer, in which the weights of up and down sampler modules
@@ -222,7 +224,7 @@ class AdapterController(nn.Module):
         else:
             self.n_routers = self.config.num_routers
         self.multi_adapters = Adapter(config, channel_dim)
-        self.multi_routers = Router(config, channel_dim)
+        self.multi_routers = Router(config, channel_dim) ##
         if self.config.routing_estimator == 'reinf_bl_routing':
             self.multi_router_baselines = Baseline(config, channel_dim)
         if self.config.routing_estimator == "skill_routing":
@@ -236,6 +238,12 @@ class AdapterController(nn.Module):
             self.post_batch_norm = nn.BatchNorm2d(channel_dim)
         if self.config.supervised_loss_weight != 0:
             self.supervised_loss_fn = nn.CrossEntropyLoss()
+
+        from src.SIMPLE.create_simple_constraint import create_exactly_k
+        alpha = create_exactly_k(4, 1)[0][-1]
+        with open('4C1.pkl', 'wb') as out:
+            pickle.dump(alpha, out, pickle.HIGHEST_PROTOCOL)
+        self.layer = Layer()
 
     def forward(self, inputs, domain_lbls, orig_domain_lbls, hash_lbls):
         """Retrieves the adapter layer corresponding to the given
@@ -307,6 +315,9 @@ class AdapterController(nn.Module):
                 else:
                     dselectk_expert_weights = self.multi_routers(z_sent)
 
+            elif routing_estimator == "simple_routing":
+                new_x, logits, adapter_probs = self.multi_routers.forward_simple_routing(z)
+
             else:
                 if self.config.token_dropout != 0:
                     z = self.token_dropout(z)
@@ -321,12 +332,15 @@ class AdapterController(nn.Module):
 
                 if self.training:
                     if routing_estimator == 'gs_st_routing':
-                        U = torch.rand(adapter_logits.shape).to(self.config.device)
-                        y = adapter_logits + (-torch.log(-torch.log(U + 1e-20) + 1e-20))
+                        # U = torch.rand(adapter_logits.shape).to(self.config.device)
+                        # y = adapter_logits + (-torch.log(-torch.log(U + 1e-20) + 1e-20))
 
-                        y = F.softmax(y / self.config.adapter_temp, dim=-1)
-                        probs, expert_index = y.max(dim=-1)
-                        val = torch.ones_like(expert_index) - probs.detach() + probs
+                        # y = F.softmax(y / self.config.adapter_temp, dim=-1)
+                        # probs, expert_index = y.max(dim=-1)
+                        probs_tilde = F.softmax(adapter_logits, dim=-1)
+                        val = torch.ones_like(expert_index) - probs_tilde.detach() + probs_tilde
+
+                        samples = self.layer(adapter_logits.log_sigmoid())
                     
                     elif routing_estimator == "reinf_bl_routing":
                         y_dist = torch.distributions.categorical.Categorical(logits = adapter_logits)
@@ -392,9 +406,13 @@ class AdapterController(nn.Module):
                 # regular index selection at test time
                 probs, expert_index = dselectk_expert_weights.max(dim=-1)
                 outputs = self.multi_adapters(z, expert_index)
+        elif routing_estimator == "simple_routing":
+            outputs = self.multi_adapters(z, None, adapter_probs)
         else:
             #(M,B,S,C)
-            outputs = self.multi_adapters(z, expert_index)
+            if routing_estimator == 'gs_st_routing':
+                outputs = self.multi_adapters(z, None, adapter_probs) * samples
+            outputs = self.multi_adapters(z, expert_index) ####
         if self.config.analyze_model:
             # need to use expert_index to accumulate values for analysis
             self.config.analysis_list.append(expert_index)

@@ -102,6 +102,21 @@ class Router(nn.Module):
         logits = torch.einsum('bmd,dnp->bmnp', x, router_weights)
         return logits
 
+    def forward_simple_routing(self,x):
+        # normalize x
+        x = x / (torch.norm(x, dim=-1, keepdim=True) + 1e-6)
+        # normalize routing weights
+        router_weights = self.router_weights / (torch.norm(self.router_weights, dim=0, keepdim=True) + 1e-6)
+        # compute logits
+        logits = torch.matmul(x, router_weights)
+        if not self.config.no_router_bias:
+            logits += self.router_bias
+        # compute probabilities
+        adapter_probs = F.softmax(logits, dim=-1)
+        # compute weighted sum of inputs
+        output = torch.matmul(adapter_probs, x)
+        return output, logits, adapter_probs
+
     def _compute_example_conditioned_expert_weights(self, routing_inputs): 
         # routing_inputs shape (B,C)
         # self.z_logits shape (num_nonzeros,C,num_binary)))
@@ -138,7 +153,9 @@ class Router(nn.Module):
         return expert_weights.unsqueeze(0) 
 
     def forward(self,x):
-        if self.config.routing_estimator == "soft_input_routing":
+        if self.config.routing_estimator == "simple_routing":
+            return self.forward_simple_routing(x)
+        elif self.config.routing_estimator == "soft_input_routing":
             return self.forward_soft_input_routing(x)
         # x shape (B,C)
         if self.config.use_load_balancing:

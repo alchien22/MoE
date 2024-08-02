@@ -1,2 +1,6 @@
 torch
 ipdb
+pillow
+torchvision
+imageio
+storchastic

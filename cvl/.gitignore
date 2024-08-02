@@ -4,6 +4,7 @@ results/
 lib/
 output/
 data/
+src/data/
 pretrained_models
 pretrained_models/
 .idea/
