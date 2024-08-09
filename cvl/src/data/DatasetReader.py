@@ -66,7 +66,7 @@ class Reader(object):
             domain_index_dict = {"clipart":0, "infograph":1, "painting":2, "quickdraw":3, "real":4 , "sketch":5}                                
             class DomainNetDataset(Dataset):
                 def __init__(self, config, input_file_list, root_dir, transform, train=True):
-                    self.root_dir = root_dir
+                    self.root_dir = root_dir    #'/space/alchien26/MoE/cvl/src/data/DomainNet/'
                     self.transform = transform
                     self.annotations = []
                     self.domain_lbls = []
@@ -75,6 +75,7 @@ class Reader(object):
                     self.config = config
                     if type(input_file_list) == type([]):
                         for index, input_file in enumerate(input_file_list):
+                            # print(self.root_dir)
                             with open(self.root_dir + input_file, 'r') as f:
                                 examples = f.readlines()
                                 if self.config.create_unbalance and train:
@@ -138,9 +139,9 @@ class Reader(object):
                 else:
                     input_file_list = [f'{domain_name}_{split}_fold.txt' for domain_name in domain_index_dict]
             if split == 'train':
-                dataset = DomainNetDataset(self.config, input_file_list, './data/DomainNet/', _train_preprocess)
+                dataset = DomainNetDataset(self.config, input_file_list, os.path.dirname(os.path.abspath(__file__)), _train_preprocess)
             else:
-                dataset = DomainNetDataset(self.config, input_file_list, './data/DomainNet/', _test_preprocess, train=False)
+                dataset = DomainNetDataset(self.config, input_file_list, os.path.dirname(os.path.abspath(__file__)), _test_preprocess, train=False)
             print(f'Length of {split} data is {len(dataset)}')
             return dataset
 

@@ -4,3 +4,5 @@ pillow
 torchvision
 imageio
 storchastic
+transformers
+sparsemax
